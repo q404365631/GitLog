@@ -101,7 +101,27 @@ def generate(
 
             progress.add_task("Classifying & generating...", total=None)
             generator = ChangelogGenerator(settings=settings)
-            result = generator.generate(commits=commits)
+            changelog = generator.generate(commits=commits)
+
+        # Render the Changelog using the requested format
+        if settings.format == "markdown":
+            from gitlog.renderers.markdown import MarkdownRenderer
+
+            renderer = MarkdownRenderer(github_repo=settings.github.repo or None)
+            result = renderer.render(changelog)
+        elif settings.format == "json":
+            from gitlog.renderers.json import JsonRenderer
+
+            result = JsonRenderer().render(changelog)
+        elif settings.format == "html":
+            from gitlog.renderers.html import HtmlRenderer
+
+            result = HtmlRenderer(github_repo=settings.github.repo or None).render(changelog)
+        else:
+            # fallback to markdown for unknown formats
+            from gitlog.renderers.markdown import MarkdownRenderer
+
+            result = MarkdownRenderer(github_repo=settings.github.repo or None).render(changelog)
 
         if dry_run:
             console.print(Panel(result, title="[bold]Changelog Preview[/]", border_style="teal"))
@@ -156,8 +176,12 @@ def diff(
         parser = GitLogParser(repo_path=repo_path)
         commits = parser.get_commits(since=from_tag, until=to_tag)
         generator = ChangelogGenerator(settings=settings)
-        result = generator.generate(commits=commits)
-        console.print(Panel(result, title=f"[bold]{from_tag} \u2192 {to_tag}[/]", border_style="blue"))
+        changelog = generator.generate(commits=commits)
+
+        from gitlog.renderers.markdown import MarkdownRenderer
+
+        rendered = MarkdownRenderer(github_repo=settings.github.repo or None).render(changelog)
+        console.print(Panel(rendered, title=f"[bold]{from_tag} \u2192 {to_tag}[/]", border_style="blue"))
     except GitlogError as exc:
         console.print(Panel(f"[red]{exc}[/]", border_style="red"))
         raise typer.Exit(1)
@@ -175,8 +199,14 @@ def tweet(
         parser = GitLogParser(repo_path=repo_path)
         commits = parser.get_commits(since=since)
         generator = ChangelogGenerator(settings=settings)
-        result = generator.generate(commits=commits)
-        console.print(Panel(result, title="\U0001f426 Tweet Draft", border_style="blue"))
+        changelog = generator.generate(commits=commits)
+
+        # Choose the most-relevant entry (Unreleased or latest)
+        entry = changelog.entries[0] if changelog.entries else generator.generate_unreleased()
+        from gitlog.renderers.twitter import TwitterRenderer
+
+        tweet = TwitterRenderer(model=settings.model, project_name=settings.project_name).render(entry)
+        console.print(Panel(tweet, title="\U0001f426 Tweet Draft", border_style="blue"))
     except GitlogError as exc:
         console.print(Panel(f"[red]{exc}[/]", border_style="red"))
         raise typer.Exit(1)

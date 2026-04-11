@@ -1,12 +1,12 @@
 <div align="center">
 
-# gitlog
+# LogForge — gitlog
 
-**AI-Powered Changelog & Release Notes Generator**
+**LogForge — AI-Powered Changelog & Release Notes Generator**
 
 [![CI](https://github.com/JToSound/LogForge/actions/workflows/ci.yml/badge.svg)](https://github.com/JToSound/LogForge/actions/workflows/ci.yml)
 [![Coverage](https://codecov.io/gh/JToSound/LogForge/branch/main/graph/badge.svg)](https://codecov.io/gh/JToSound/LogForge)
-[![PyPI](https://img.shields.io/pypi/v/gitlog.svg)](https://pypi.org/project/gitlog/)
+[![GitHub Releases](https://img.shields.io/github/v/release/JToSound/LogForge)](https://github.com/JToSound/LogForge/releases)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
@@ -20,13 +20,22 @@ Supports **multiple languages**, **multiple output formats**, and **any LLM**.
 ## Quick Start
 
 ```bash
-pip install gitlog
+# Install directly from GitHub (recommended until published to PyPI)
+pip install git+https://github.com/JToSound/LogForge.git
 cd your-repo
 export OPENAI_API_KEY=sk-...
 gitlog generate
 ```
 
 That's it. Your `CHANGELOG.md` is ready. 🎉
+
+---
+
+## 5s Demo
+
+Below is a very short demo that shows `gitlog generate` producing a changelog in under 5 seconds on small repos.
+
+![Quick demo](docs/demo.svg)
 
 ---
 

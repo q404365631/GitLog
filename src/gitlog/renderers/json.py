@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime
 
 from gitlog.core.models import Changelog
 
@@ -18,25 +19,39 @@ class JsonRenderer:
         Returns:
             JSON-formatted string.
         """
+        def _commit_to_dict(c):
+            return {
+                "sha": c.sha,
+                "message": c.message,
+                "author": getattr(c.author, "name", "") if c.author else "",
+                "date": getattr(c, "date", None),
+                "scope": c.scope,
+                "breaking": c.is_breaking,
+                "issues": c.issue_refs,
+                "prs": c.pr_number,
+            }
+
+        def _serialize_date(d):
+            if d is None:
+                return None
+            try:
+                if hasattr(d, "isoformat"):
+                    # Prefer YYYY-MM-DD when the datetime has zeroed time
+                    if isinstance(d, datetime):
+                        if d.hour == 0 and d.minute == 0 and d.second == 0:
+                            return d.date().isoformat()
+                        return d.isoformat()
+            except Exception:
+                pass
+            return d
+
         data = {
             "entries": [
                 {
                     "version": entry.version,
-                    "date": entry.date,
+                    "date": _serialize_date(entry.date),
                     "groups": {
-                        ct.value: [
-                            {
-                                "sha": c.sha,
-                                "message": c.message,
-                                "author": c.author,
-                                "date": c.date,
-                                "scope": c.scope,
-                                "breaking": c.breaking,
-                                "issues": c.issue_refs,
-                                "prs": c.pr_refs,
-                            }
-                            for c in commits
-                        ]
+                        ct.value: [_commit_to_dict(c) for c in commits]
                         for ct, commits in entry.groups.items()
                     },
                 }

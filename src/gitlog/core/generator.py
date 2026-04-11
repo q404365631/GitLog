@@ -76,6 +76,7 @@ class ChangelogGenerator:
         since: str | None = None,
         until: str | None = None,
         paths: list[str] | None = None,
+        commits: list["Commit"] | None = None,
     ) -> Changelog:
         """Generate a full Changelog object.
 
@@ -88,9 +89,12 @@ class ChangelogGenerator:
             A fully populated Changelog instance.
         """
         tags = self._parser.get_tags()
-        all_commits = self._parser.get_commits(
-            since=since, until=until, paths=paths
-        )
+        if commits is None:
+            all_commits = self._parser.get_commits(
+                since=since, until=until, paths=paths
+            )
+        else:
+            all_commits = commits
         all_commits = self._classifier.classify_all(all_commits)
 
         entries = self._build_entries(tags, all_commits)
