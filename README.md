@@ -1,14 +1,5 @@
 <div align="center">
 
-<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <rect width="64" height="64" rx="14" fill="#01696f"/>
-  <rect x="14" y="18" width="28" height="4" rx="2" fill="white"/>
-  <rect x="14" y="26" width="36" height="4" rx="2" fill="white" opacity="0.7"/>
-  <rect x="14" y="34" width="22" height="4" rx="2" fill="white" opacity="0.5"/>
-  <circle cx="48" cy="42" r="10" fill="#fdab43"/>
-  <path d="M44 42h8M48 38v8" stroke="white" stroke-width="2.5" stroke-linecap="round"/>
-</svg>
-
 # gitlog
 
 **AI-Powered Changelog & Release Notes Generator**
@@ -122,22 +113,20 @@ max_commits_per_group = 20
 repo = "owner/repo"
 ```
 
-### Full Configuration Parameters
+### Full Configuration Reference
 
 | Parameter | Default | Description |
 |---|---|---|
-| `llm_provider` | `openai` | LLM provider: `openai`, `anthropic`, `ollama`, `gemini` |
-| `model` | `gpt-4o-mini` | Model name |
+| `llm_provider` | `openai` | LLM provider: `openai`, `anthropic`, `ollama` |
+| `model` | `gpt-4o-mini` | Model identifier |
 | `language` | `en` | Output language: `en`, `zh-TW`, `zh-CN`, `ja` |
-| `format` | `markdown` | Output: `markdown`, `json`, `html`, `twitter` |
+| `format` | `markdown` | Output format: `markdown`, `json`, `html`, `twitter` |
 | `output_file` | `CHANGELOG.md` | Output file path |
-| `project_description` | `""` | Project context for LLM |
-| `exclude_patterns` | `[...]` | Regex patterns to exclude |
-| `group_by_scope` | `true` | Group by commit scope |
-| `max_commits_per_group` | `20` | Max entries per section |
-| `github.repo` | `""` | `owner/repo` for link generation |
-
-See [docs/configuration.md](docs/configuration.md) for the full reference.
+| `project_description` | `""` | Project context injected into LLM prompts |
+| `exclude_patterns` | see default | Regex list of commit messages to skip |
+| `group_by_scope` | `true` | Group commits by conventional commit scope |
+| `max_commits_per_group` | `20` | Max commits shown per category per version |
+| `github.repo` | `""` | `owner/repo` for generating clickable links |
 
 ---
 
@@ -147,42 +136,29 @@ Add to your release workflow:
 
 ```yaml
 - name: Generate Changelog
+  uses: JToSound/LogForge/.github/workflows/release.yml@main
   env:
     OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-  run: |
-    pip install gitlog
-    gitlog generate --since ${{ github.event.release.tag_name }} \
-      --format markdown --output CHANGELOG.md
 ```
 
-The included [`.github/workflows/release.yml`](.github/workflows/release.yml) does this automatically on every version tag push.
+Or use the included `release.yml` which automatically:
+1. Builds and publishes to PyPI on tag push
+2. Generates the changelog using gitlog itself
+3. Creates a GitHub Release with the generated notes
 
 ---
 
 ## Supported LLM Providers
 
-| Provider | Example model string |
-|---|---|
-| OpenAI | `gpt-4o-mini`, `gpt-4o` |
-| Anthropic | `anthropic/claude-3-haiku-20240307` |
-| Ollama (local) | `ollama/llama3`, `ollama/mistral` |
-| Google Gemini | `gemini/gemini-1.5-flash` |
-
----
-
-## Contributing
-
-```bash
-git clone https://github.com/JToSound/LogForge.git
-cd LogForge
-uv sync --extra dev
-uv run pytest
-```
-
-PRs welcome! Please run `ruff check` and `mypy src/gitlog` before submitting.
+| Provider | Model Example | Env Var |
+|---|---|---|
+| OpenAI | `gpt-4o-mini` | `OPENAI_API_KEY` |
+| Anthropic | `claude-3-5-haiku-20241022` | `ANTHROPIC_API_KEY` |
+| Ollama (local) | `ollama/llama3` | *(none required)* |
+| Gemini | `gemini/gemini-1.5-flash` | `GEMINI_API_KEY` |
 
 ---
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT © gitlog contributors

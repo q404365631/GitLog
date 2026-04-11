@@ -1,84 +1,86 @@
 # Configuration Reference
 
-`gitlog` can be configured via a `.gitlog.toml` file in your repository root,
-or via environment variables (prefixed `GITLOG_`).
+`gitlog` is configured via a `.gitlog.toml` file in the root of your repository,
+or via environment variables prefixed with `GITLOG_`.
 
 Run `gitlog init` for an interactive setup wizard.
 
 ---
 
-## Full `.gitlog.toml` Reference
+## Full Example
 
 ```toml
 [gitlog]
-# LLM provider identifier
-llm_provider = "openai"          # openai | anthropic | ollama | gemini
-
-# Model name (provider-specific)
+llm_provider = "openai"
 model = "gpt-4o-mini"
-
-# Output language
-language = "en"                  # en | zh-TW | zh-CN | ja
-
-# Default output format
-format = "markdown"              # markdown | json | html | twitter
-
-# Output file path (relative to repo root)
+language = "en"
+format = "markdown"
 output_file = "CHANGELOG.md"
-
-# Short project description — injected into LLM context for better results
-project_description = "A developer tool for..."
-
-# Regex patterns to exclude commits (applied to subject line)
+project_description = "A developer tool that automates changelog generation."
 exclude_patterns = [
-    "^chore\\(deps\\)",
-    "^Merge branch",
-    "^Merge pull request",
+  "^chore\\(deps\\)",
+  "^Merge branch",
+  "^Merge pull request",
 ]
-
-# Group entries by commit scope (e.g. feat(auth): → grouped under 'auth')
 group_by_scope = true
-
-# Maximum commits rendered per category per version
 max_commits_per_group = 20
 
-# Project name shown in changelog header (defaults to repo directory name)
-project_name = ""
-
-
 [gitlog.prompts]
-# Override the default classification system prompt
-classify_system = ""
-
-# Override the default summarize/polish system prompt
-summarize_system = ""
-
+classify_system = ""  # override the default classify system prompt
+summarize_system = ""  # override the default summarize system prompt
 
 [gitlog.github]
-# GitHub repository in owner/repo format
-# Enables auto-generation of commit hash links, PR links, and issue links
-repo = "owner/repo"
+repo = "owner/repo"  # enables clickable PR/issue/commit links
 ```
+
+---
+
+## Parameters
+
+### `[gitlog]`
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `llm_provider` | string | `"openai"` | LLM backend. One of `openai`, `anthropic`, `ollama`. |
+| `model` | string | `"gpt-4o-mini"` | Model name passed to litellm. |
+| `language` | string | `"en"` | Output language. One of `en`, `zh-TW`, `zh-CN`, `ja`. |
+| `format` | string | `"markdown"` | Output format. One of `markdown`, `json`, `html`, `twitter`. |
+| `output_file` | string | `"CHANGELOG.md"` | Path to write the changelog. |
+| `project_description` | string | `""` | Injected into LLM context for better classification. |
+| `exclude_patterns` | list[string] | see default | Regex patterns — matching commits are skipped. |
+| `group_by_scope` | bool | `true` | Sub-group commits within a category by their scope. |
+| `max_commits_per_group` | int | `20` | Truncate large groups to this count. |
+
+### `[gitlog.prompts]`
+
+| Key | Default | Description |
+|---|---|---|
+| `classify_system` | `""` | Override the system prompt for the classifier LLM call. |
+| `summarize_system` | `""` | Override the system prompt for the summarization LLM call. |
+
+### `[gitlog.github]`
+
+| Key | Default | Description |
+|---|---|---|
+| `repo` | `""` | `owner/repo` slug. Enables hyperlinks in Markdown and HTML output. |
 
 ---
 
 ## Environment Variables
 
-All settings can be overridden via environment variables:
+Every setting can also be provided as an environment variable:
 
-| Variable | Equivalent setting |
-|---|---|
-| `GITLOG_LLM_PROVIDER` | `llm_provider` |
-| `GITLOG_MODEL` | `model` |
-| `GITLOG_LANGUAGE` | `language` |
-| `GITLOG_FORMAT` | `format` |
-| `GITLOG_OUTPUT_FILE` | `output_file` |
-| `GITLOG_PROJECT_DESCRIPTION` | `project_description` |
-| `OPENAI_API_KEY` | OpenAI API key |
-| `ANTHROPIC_API_KEY` | Anthropic API key |
+```bash
+export GITLOG_MODEL=claude-3-5-haiku-20241022
+export GITLOG_LANGUAGE=zh-TW
+export GITLOG_FORMAT=html
+```
+
+Environment variables take precedence over `.gitlog.toml`.
 
 ---
 
-## Precedence
+## Prompt Templates
 
-CLI flags > environment variables > `.gitlog.toml` > built-in defaults.
+Prompt templates live in `src/gitlog/templates/prompts/` as TOML files.
+You can override them project-wide via `[gitlog.prompts]` in your config.
