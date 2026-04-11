@@ -1,73 +1,77 @@
-"""Tests for the commit classification engine."""
+"""Tests for the commit classifier module."""
 from __future__ import annotations
 
-from gitlog.core.classifier import CommitClassifier, RuleBasedClassifier
-from gitlog.core.models import Commit, CommitType
+import pytest
+
+from gitlog.core.classifier import CommitClassifier, RuleClassifier, _rule_classify
+from gitlog.core.models import CommitType
+from gitlog.config import GitlogConfig
+from tests.conftest import make_commit
 
 
-class TestRuleBasedClassifier:
-    """Unit tests for the rule-based classifier layer."""
+class TestRuleClassifier:
+    def test_feat(self) -> None:
+        assert _rule_classify("feat: add dark mode") == "feat"
 
-    def setup_method(self):
-        self.clf = RuleBasedClassifier()
+    def test_feat_scope(self) -> None:
+        assert _rule_classify("feat(ui): add dark mode") == "feat"
 
-    def _commit(self, message: str, body: str = "") -> Commit:
-        return Commit(sha="abc1234", message=message, author="test", date="2024-01-01", body=body)
+    def test_fix(self) -> None:
+        assert _rule_classify("fix: resolve null pointer") == "fix"
 
-    def test_feat_prefix(self):
-        assert self.clf.classify(self._commit("feat: add OAuth login")) == CommitType.FEAT
+    def test_breaking_bang(self) -> None:
+        assert _rule_classify("feat!: drop Python 3.9") == "breaking"
 
-    def test_fix_prefix(self):
-        assert self.clf.classify(self._commit("fix: correct null pointer")) == CommitType.FIX
+    def test_chore(self) -> None:
+        assert _rule_classify("chore: update deps") == "chore"
 
-    def test_perf_prefix(self):
-        assert self.clf.classify(self._commit("perf: use index scan")) == CommitType.PERF
+    def test_ci(self) -> None:
+        assert _rule_classify("ci: add release workflow") == "chore"
 
-    def test_chore_prefix(self):
-        assert self.clf.classify(self._commit("chore(deps): bump library")) == CommitType.CHORE
+    def test_docs(self) -> None:
+        assert _rule_classify("docs: update README") == "docs"
 
-    def test_breaking_exclamation(self):
-        assert self.clf.classify(self._commit("feat!: redesign API")) == CommitType.BREAKING
+    def test_perf(self) -> None:
+        assert _rule_classify("perf: cache db queries") == "perf"
 
-    def test_breaking_footer(self):
-        result = self.clf.classify(
-            self._commit("feat: new API", body="BREAKING CHANGE: removes v1 endpoints")
-        )
-        assert result == CommitType.BREAKING
+    def test_refactor(self) -> None:
+        assert _rule_classify("refactor: extract helper") == "refactor"
 
-    def test_docs_prefix(self):
-        assert self.clf.classify(self._commit("docs: update README")) == CommitType.DOCS
+    def test_misc_fallback(self) -> None:
+        assert _rule_classify("random commit message") == "misc"
 
-    def test_non_conventional_returns_none(self):
-        assert self.clf.classify(self._commit("Fixed the login bug")) is None
+    def test_case_insensitive(self) -> None:
+        assert _rule_classify("Feat: new thing") == "feat"
 
-    def test_case_insensitive(self):
-        assert self.clf.classify(self._commit("FEAT: upper case")) == CommitType.FEAT
 
-    def test_refactor_prefix(self):
-        assert self.clf.classify(self._commit("refactor: extract helper")) == CommitType.REFACTOR
+class TestRuleClassifierClass:
+    def test_is_excluded(self) -> None:
+        rc = RuleClassifier(exclude_patterns=[r"^Merge branch"])
+        assert rc.is_excluded("Merge branch 'main' into dev")
+        assert not rc.is_excluded("feat: add thing")
+
+    def test_classify_method(self) -> None:
+        rc = RuleClassifier()
+        assert rc.classify("fix: crash on startup") == "fix"
 
 
 class TestCommitClassifier:
-    """Integration tests for CommitClassifier (rule-only, no LLM)."""
-
-    def test_classify_all_conventional(self, default_config, sample_conventional_commits):
-        clf = CommitClassifier(default_config)
-        result = clf.classify_all(sample_conventional_commits)
-        types = [c.commit_type for c in result]
-        assert CommitType.FEAT in types
-        assert CommitType.FIX in types
-        assert CommitType.BREAKING in types
-
-    def test_non_conventional_defaults_to_misc_without_llm(self, default_config):
-        clf = CommitClassifier(default_config)
+    def test_classifies_conventional(self) -> None:
+        config = GitlogConfig()
+        clf = CommitClassifier(config=config)
         commits = [
-            Commit(sha="x", message="random message", author="a", date="2024-01-01")
+            make_commit(subject="feat: new feature"),
+            make_commit(subject="fix: null error"),
+            make_commit(subject="docs: update readme"),
         ]
         result = clf.classify_all(commits)
-        assert result[0].commit_type == CommitType.MISC
+        assert result[0].commit_type == CommitType.FEAT
+        assert result[1].commit_type == CommitType.FIX
+        assert result[2].commit_type == CommitType.DOCS
 
-    def test_returns_same_length(self, default_config, sample_all_commits):
-        clf = CommitClassifier(default_config)
-        result = clf.classify_all(sample_all_commits)
-        assert len(result) == len(sample_all_commits)
+    def test_misc_kept_without_llm(self) -> None:
+        config = GitlogConfig(llm_provider="", model="")
+        clf = CommitClassifier(config=config)
+        commits = [make_commit(subject="random message with no prefix")]
+        result = clf.classify_all(commits)
+        assert result[0].commit_type == CommitType.MISC

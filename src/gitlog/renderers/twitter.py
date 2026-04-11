@@ -1,60 +1,55 @@
-"""Twitter/X announcement draft renderer."""
+"""Twitter/X release announcement renderer."""
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from gitlog.core.models import ChangelogEntry, CommitType
-from gitlog.exceptions import LLMError
+
+if TYPE_CHECKING:
+    from gitlog.config import GitlogConfig
 
 
 class TwitterRenderer:
-    """Generates a concise Twitter/X announcement from a ChangelogEntry."""
+    """Generate a tweet-length release announcement.
 
-    def __init__(self, model: str = "gpt-4o-mini", project_name: str = "") -> None:
-        self._model = model
-        self._project_name = project_name
+    Args:
+        config: GitlogConfig instance.
+    """
+
+    def __init__(self, config: "GitlogConfig") -> None:
+        self._config = config
 
     def render(self, entry: ChangelogEntry) -> str:
-        """Generate a tweet-length announcement for a release.
+        """Create a tweet draft from a ChangelogEntry.
 
         Args:
-            entry: The ChangelogEntry to announce.
+            entry: The version entry to summarise.
 
         Returns:
-            A string ≤ 280 characters suitable for Twitter/X.
+            Tweet-length string.
         """
+        project = self._config.project_name or self._config.project_description or "Our project"
+        version = "" if entry.version == "Unreleased" else f" {entry.version}"
+
+        highlights: list[str] = []
         feats = entry.groups.get(CommitType.FEAT, [])
         fixes = entry.groups.get(CommitType.FIX, [])
         breaking = entry.groups.get(CommitType.BREAKING, [])
 
-        summary_lines = []
+        if feats:
+            first = (feats[0].subject or "").split(":")[-1].strip()
+            highlights.append(
+                f"\u2728 {len(feats)} new feature{'s' if len(feats) > 1 else ''}"
+                + (f" (incl. {first})" if first else "")
+            )
+        if fixes:
+            highlights.append(f"\U0001f41b {len(fixes)} bug fix{'es' if len(fixes) > 1 else ''}")
         if breaking:
-            summary_lines.append(f"⚠️ BREAKING: {breaking[0].message[:60]}")
-        for c in feats[:3]:
-            summary_lines.append(f"✨ {c.message[:70]}")
-        for c in fixes[:2]:
-            summary_lines.append(f"🐛 {c.message[:70]}")
+            highlights.append("\u26a0\ufe0f Breaking changes — see CHANGELOG")
 
-        fallback = (
-            f"🚀 {self._project_name or 'App'} {entry.version} released!\n"
-            + "\n".join(summary_lines[:4])
-        )
-
-        try:
-            import litellm  # type: ignore[import]
-
-            bullets = "\n".join(summary_lines[:6]) or "General improvements."
-            prompt = (
-                f"Write a Twitter/X announcement for {self._project_name or 'software'} "
-                f"version {entry.version}.\n"
-                f"Key changes:\n{bullets}\n"
-                "Requirements: <= 280 chars, engaging, include version, use 1-2 emojis."
-            )
-            resp = litellm.completion(
-                model=self._model,
-                messages=[{"role": "user", "content": prompt}],
-                max_tokens=100,
-                temperature=0.7,
-            )
-            text = (resp.choices[0].message.content or "").strip()
-            return text[:280]
-        except Exception:  # noqa: BLE001
-            return fallback[:280]
+        lines = [f"\U0001f680 {project}{version} is out!"]
+        lines.extend(highlights[:3])
+        if self._config.github.repo:
+            lines.append(f"\n\U0001f4e6 https://github.com/{self._config.github.repo}")
+        lines.append("\n#opensource #devtools #changelog")
+        return "\n".join(lines)

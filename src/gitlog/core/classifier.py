@@ -1,4 +1,4 @@
-"""Commit classification engine with rule-based and LLM-powered layers."""
+"""Two-layer commit classifier: regex rules + batch LLM fallback."""
 from __future__ import annotations
 
 import json
@@ -14,193 +14,202 @@ if TYPE_CHECKING:
     from gitlog.config import GitlogConfig
 
 # ---------------------------------------------------------------------------
-# Regex patterns for Conventional Commits
+# Rule-based classification patterns (zero API cost)
 # ---------------------------------------------------------------------------
-_CC_PATTERN = re.compile(
-    r"^(?P<type>feat|fix|perf|refactor|docs|style|test|chore|ci|build|revert)"
-    r"(?:\((?P<scope>[^)]+)\))?(?P<breaking>!)?:\s+(?P<desc>.+)$",
-    re.IGNORECASE,
-)
-_BREAKING_FOOTER = re.compile(r"BREAKING[- ]CHANGE:", re.IGNORECASE)
 
-_TYPE_MAP: dict[str, CommitType] = {
+_CC_RULES: list[tuple[re.Pattern[str], CommitType]] = [
+    (re.compile(r"^feat(\(.+\))?(!)?:", re.I), CommitType.FEAT),
+    (re.compile(r"^fix(\(.+\))?(!)?:", re.I), CommitType.FIX),
+    (re.compile(r"^perf(\(.+\))?(!)?:", re.I), CommitType.PERF),
+    (re.compile(r"^refactor(\(.+\))?(!)?:", re.I), CommitType.REFACTOR),
+    (re.compile(r"^docs?(\(.+\))?(!)?:", re.I), CommitType.DOCS),
+    (re.compile(r"^(chore|build|ci)(\(.+\))?(!)?:", re.I), CommitType.CHORE),
+    (re.compile(r"^breaking:", re.I), CommitType.BREAKING),
+    (re.compile(r"^(revert|test|style)(\(.+\))?(!)?:", re.I), CommitType.MISC),
+]
+
+_TYPE_STR_MAP: dict[str, CommitType] = {
     "feat": CommitType.FEAT,
     "fix": CommitType.FIX,
     "perf": CommitType.PERF,
     "refactor": CommitType.REFACTOR,
     "docs": CommitType.DOCS,
-    "style": CommitType.CHORE,
-    "test": CommitType.CHORE,
     "chore": CommitType.CHORE,
-    "ci": CommitType.CHORE,
-    "build": CommitType.CHORE,
-    "revert": CommitType.FIX,
+    "breaking": CommitType.BREAKING,
+    "misc": CommitType.MISC,
 }
 
 
-class RuleBasedClassifier:
-    """Layer-1: zero-cost rule-engine classifier."""
+def _rule_classify(message: str) -> str:
+    """Classify a commit message string via regex rules only.
 
-    def classify(self, commit: Commit) -> CommitType | None:
-        """Return CommitType if the commit matches a Conventional Commits pattern.
+    Args:
+        message: Commit subject or full message.
+
+    Returns:
+        CommitType value string (e.g. 'feat', 'fix', 'misc').
+    """
+    for pattern, commit_type in _CC_RULES:
+        if pattern.match(message):
+            # Detect breaking via '!' marker
+            if "!:" in message.split(":")[0]:
+                return CommitType.BREAKING.value
+            return commit_type.value
+    return CommitType.MISC.value
+
+
+# Expose as RuleClassifier for any code that imports it by name
+class RuleClassifier:
+    """Stateless rule-based classifier.
+
+    Args:
+        exclude_patterns: Regex strings for commits to skip.
+    """
+
+    def __init__(self, exclude_patterns: list[str] | None = None) -> None:
+        self._exclude = [re.compile(p) for p in (exclude_patterns or [])]
+
+    def classify(self, message: str) -> str:
+        """Return label string for a commit message.
 
         Args:
-            commit: The commit to classify.
+            message: Commit subject or message.
 
         Returns:
-            CommitType if matched, otherwise None.
+            CommitType value string.
         """
-        msg = commit.message.strip()
+        return _rule_classify(message)
 
-        # BREAKING CHANGE footer takes precedence
-        full_text = msg + "\n" + (commit.body or "")
-        if _BREAKING_FOOTER.search(full_text):
-            return CommitType.BREAKING
+    def is_excluded(self, message: str) -> bool:
+        """Check if message matches any exclusion pattern.
 
-        m = _CC_PATTERN.match(msg)
-        if m:
-            if m.group("breaking"):
-                return CommitType.BREAKING
-            return _TYPE_MAP.get(m.group("type").lower(), CommitType.MISC)
+        Args:
+            message: Commit message.
 
-        return None
+        Returns:
+            True if the commit should be excluded.
+        """
+        return any(p.search(message) for p in self._exclude)
 
 
-class LLMClassifier:
-    """Layer-2: batched LLM classifier for non-conventional commits."""
+# ---------------------------------------------------------------------------
+# Main CommitClassifier (rules + optional LLM batch)
+# ---------------------------------------------------------------------------
 
-    _CHUNK_SIZE = 40  # max commits per LLM request
+class CommitClassifier:
+    """Classifies commits using rules first, LLM for remainder.
+
+    Args:
+        config: GitlogConfig instance.
+    """
+
+    _CHUNK = 50  # max commits per LLM call
 
     def __init__(self, config: "GitlogConfig") -> None:
         self._config = config
+        self._rule = RuleClassifier(exclude_patterns=config.exclude_patterns)
+
+    def classify_all(self, commits: list[Commit]) -> list[Commit]:
+        """Classify all commits, using LLM only for those rules cannot handle.
+
+        Args:
+            commits: Raw commit list.
+
+        Returns:
+            Commits with commit_type populated.
+        """
+        ruled: list[Commit] = []
+        needs_llm: list[Commit] = []
+
+        for commit in commits:
+            label = _rule_classify(commit.subject or commit.message)
+            if label != CommitType.MISC.value:
+                ruled.append(commit.model_copy(update={"commit_type": CommitType(label)}))
+            else:
+                needs_llm.append(commit)
+
+        if needs_llm and self._config.llm_provider and self._config.model:
+            try:
+                needs_llm = self._llm_batch(needs_llm)
+            except LLMError:
+                pass  # graceful fallback — keep as MISC
+
+        return ruled + needs_llm
+
+    def _llm_batch(self, commits: list[Commit]) -> list[Commit]:
+        """Classify commits in batches via LLM.
+
+        Args:
+            commits: Commits that rules could not classify.
+
+        Returns:
+            Commits with updated commit_type.
+        """
+        result: list[Commit] = []
+        for i in range(0, len(commits), self._CHUNK):
+            chunk = commits[i : i + self._CHUNK]
+            labels = self._call_llm(chunk)
+            for commit, label in zip(chunk, labels):
+                ct = _TYPE_STR_MAP.get(label.lower(), CommitType.MISC)
+                result.append(commit.model_copy(update={"commit_type": ct}))
+        return result
 
     @retry(
         stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=2, max=10),
+        wait=wait_exponential(multiplier=1, min=1, max=8),
         reraise=True,
     )
-    def _call_llm(self, messages: list[dict]) -> str:
-        """Send a single batched classification request to the LLM.
+    def _call_llm(self, commits: list[Commit]) -> list[str]:
+        """Send one LLM request for a chunk of commits.
 
         Args:
-            messages: Chat messages formatted for the LLM API.
+            commits: Chunk to classify.
 
         Returns:
-            Raw string response from the model.
+            List of label strings in input order.
 
         Raises:
-            LLMError: When the provider call fails after retries.
+            LLMError: On API failure after retries.
         """
         try:
-            import litellm  # type: ignore[import]
+            import litellm  # type: ignore[import-untyped]
+        except ImportError as exc:
+            raise LLMError(
+                "litellm not installed.",
+                hint="pip install litellm",
+            ) from exc
 
-            response = litellm.completion(
+        numbered = "\n".join(
+            f"{i + 1}. {c.subject or c.message[:120]}"
+            for i, c in enumerate(commits)
+        )
+        system = (
+            self._config.prompts.classify_system
+            or "You are a changelog classifier. Classify each git commit into one of: "
+               "[feat, fix, perf, refactor, docs, chore, breaking, misc]. "
+               "Return a JSON array matching input order. No explanation."
+        )
+        user = (
+            f"Project: {self._config.project_description or 'unknown'}\n\n"
+            f"Classify these {len(commits)} commits:\n{numbered}\n\n"
+            f'RESPONSE FORMAT: ["feat", "fix", ...]'
+        )
+        try:
+            resp = litellm.completion(
                 model=self._config.model,
-                messages=messages,
-                response_format={"type": "json_object"},
+                messages=[
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user},
+                ],
                 temperature=0,
             )
-            return response.choices[0].message.content or ""
-        except Exception as exc:  # pragma: no cover
+            raw = resp.choices[0].message.content or "[]"
+            m = re.search(r"\[.*\]", raw, re.DOTALL)
+            if not m:
+                return [CommitType.MISC.value] * len(commits)
+            labels: list[str] = json.loads(m.group())
+            while len(labels) < len(commits):
+                labels.append(CommitType.MISC.value)
+            return labels[: len(commits)]
+        except Exception as exc:
             raise LLMError(f"LLM call failed: {exc}") from exc
-
-    def classify_batch(self, commits: list[Commit]) -> list[CommitType]:
-        """Classify a list of commits using the LLM in batches.
-
-        Args:
-            commits: Commits that could not be classified by the rule engine.
-
-        Returns:
-            List of CommitType values in the same order as the input.
-        """
-        results: list[CommitType] = []
-        for i in range(0, len(commits), self._CHUNK_SIZE):
-            chunk = commits[i : i + self._CHUNK_SIZE]
-            results.extend(self._classify_chunk(chunk))
-        return results
-
-    def _classify_chunk(self, commits: list[Commit]) -> list[CommitType]:
-        """Classify a single chunk of commits."""
-        numbered = "\n".join(
-            f"{idx + 1}. {c.message[:200]}" for idx, c in enumerate(commits)
-        )
-        system_prompt = (
-            "You are a changelog classifier. "
-            "Classify each git commit into EXACTLY one of: "
-            "feat, fix, perf, refactor, docs, chore, breaking.\n"
-            "Return a JSON object with key 'types' containing an array matching the input order.\n"
-            "Be concise. Do not explain."
-        )
-        if self._config.project_description:
-            system_prompt += f"\nProject context: {self._config.project_description}"
-
-        user_prompt = (
-            f"Classify these {len(commits)} commits:\n{numbered}\n\n"
-            'RESPONSE FORMAT: {"types": ["feat", "fix", ...]}'
-        )
-
-        try:
-            raw = self._call_llm(
-                [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ]
-            )
-            data = json.loads(raw)
-            types_raw: list[str] = data.get("types", [])
-            mapping = {
-                "feat": CommitType.FEAT,
-                "fix": CommitType.FIX,
-                "perf": CommitType.PERF,
-                "refactor": CommitType.REFACTOR,
-                "docs": CommitType.DOCS,
-                "chore": CommitType.CHORE,
-                "breaking": CommitType.BREAKING,
-            }
-            return [
-                mapping.get(t.lower(), CommitType.MISC)
-                for t in types_raw[: len(commits)]
-            ]
-        except Exception:  # noqa: BLE001 – fallback, never crash
-            return [CommitType.MISC] * len(commits)
-
-
-class CommitClassifier:
-    """Orchestrates rule-based (Layer 1) + LLM (Layer 2) classification."""
-
-    def __init__(self, config: "GitlogConfig") -> None:
-        self._rule = RuleBasedClassifier()
-        self._llm = LLMClassifier(config)
-        self._use_llm = bool(config.llm_provider)
-
-    def classify_all(self, commits: list[Commit]) -> list[Commit]:
-        """Classify a list of commits in-place, returning annotated commits.
-
-        Args:
-            commits: Raw commits to classify.
-
-        Returns:
-            The same commits with `commit_type` populated.
-        """
-        unclassified_idx: list[int] = []
-        unclassified: list[Commit] = []
-
-        for idx, commit in enumerate(commits):
-            ct = self._rule.classify(commit)
-            if ct is not None:
-                commits[idx] = commit.model_copy(update={"commit_type": ct})
-            else:
-                unclassified_idx.append(idx)
-                unclassified.append(commit)
-
-        if unclassified and self._use_llm:
-            llm_types = self._llm.classify_batch(unclassified)
-            for idx, ct in zip(unclassified_idx, llm_types):
-                commits[idx] = commits[idx].model_copy(update={"commit_type": ct})
-        else:
-            for idx in unclassified_idx:
-                commits[idx] = commits[idx].model_copy(
-                    update={"commit_type": CommitType.MISC}
-                )
-
-        return commits

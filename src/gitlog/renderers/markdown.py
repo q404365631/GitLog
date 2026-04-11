@@ -1,79 +1,109 @@
 """Keep-a-Changelog Markdown renderer."""
 from __future__ import annotations
 
-from gitlog.core.models import Changelog, ChangelogEntry, CommitType
+import re
+from datetime import date
+from typing import TYPE_CHECKING
+
+from gitlog.core.models import Changelog, ChangelogEntry, Commit, CommitType
+
+if TYPE_CHECKING:
+    from gitlog.config import GitlogConfig
 
 _SECTION_TITLES: dict[CommitType, str] = {
-    CommitType.BREAKING: "⚠️ Breaking Changes",
-    CommitType.FEAT: "✨ Features",
-    CommitType.FIX: "🐛 Bug Fixes",
-    CommitType.PERF: "⚡ Performance",
-    CommitType.REFACTOR: "♻️ Refactoring",
-    CommitType.DOCS: "📝 Documentation",
-    CommitType.CHORE: "🔧 Chores",
-    CommitType.MISC: "📦 Miscellaneous",
+    CommitType.BREAKING: "\u26a0\ufe0f Breaking Changes",
+    CommitType.FEAT:     "\u2728 Features",
+    CommitType.FIX:      "\U0001f41b Bug Fixes",
+    CommitType.PERF:     "\u26a1 Performance",
+    CommitType.REFACTOR: "\u267b\ufe0f Refactors",
+    CommitType.DOCS:     "\U0001f4dd Documentation",
+    CommitType.CHORE:    "\U0001f527 Chores",
+    CommitType.MISC:     "\U0001f4e6 Miscellaneous",
 }
+
+_TYPE_ORDER = [
+    CommitType.BREAKING, CommitType.FEAT, CommitType.FIX, CommitType.PERF,
+    CommitType.REFACTOR, CommitType.DOCS, CommitType.CHORE, CommitType.MISC,
+]
 
 
 class MarkdownRenderer:
-    """Renders a Changelog to Keep-a-Changelog Markdown format."""
+    """Render a Changelog to Keep-a-Changelog Markdown.
 
-    def __init__(self, github_repo: str | None = None) -> None:
-        self._github_repo = github_repo
+    Args:
+        config: GitlogConfig instance.
+    """
+
+    def __init__(self, config: "GitlogConfig") -> None:
+        self._config = config
 
     def render(self, changelog: Changelog) -> str:
-        """Render a full Changelog to a Markdown string.
+        """Render the full changelog.
 
         Args:
-            changelog: The Changelog to render.
+            changelog: Structured Changelog object.
 
         Returns:
-            A Markdown-formatted string.
+            Markdown string.
         """
         lines: list[str] = [
             "# Changelog\n",
-            "All notable changes to this project will be documented in this file.\n",
-            "The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),",
-            "and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).\n",
+            "All notable changes are documented here.  ",
+            "Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).\n",
         ]
         for entry in changelog.entries:
-            lines.append(self._render_entry(entry))
+            if not entry.is_empty():
+                lines.append(self._render_entry(entry))
         return "\n".join(lines)
-
-    def render_entry(self, entry: ChangelogEntry) -> str:
-        """Render a single ChangelogEntry section.
-
-        Args:
-            entry: The entry to render.
-
-        Returns:
-            Markdown string for one version block.
-        """
-        return self._render_entry(entry)
 
     def _render_entry(self, entry: ChangelogEntry) -> str:
-        date_str = f" - {entry.date}" if entry.date else ""
-        lines: list[str] = [f"## [{entry.version}]{date_str}\n"]
+        """Render a single version section.
 
-        from gitlog.core.models import _CATEGORY_ORDER  # type: ignore[attr-defined]
+        Args:
+            entry: ChangelogEntry to render.
 
-        for ct in _CATEGORY_ORDER if hasattr(
-            __import__("gitlog.core.models", fromlist=["_CATEGORY_ORDER"]),
-            "_CATEGORY_ORDER",
-        ) else list(CommitType):
+        Returns:
+            Markdown section string.
+        """
+        today = date.today().isoformat()
+        date_label = entry.date or today
+        is_unrel = entry.version == "Unreleased"
+        header = f"## [Unreleased]\n" if is_unrel else f"## [{entry.version}] — {date_label}\n"
+        parts = [header]
+
+        for ct in _TYPE_ORDER:
             commits = entry.groups.get(ct, [])
-            if not commits:
-                continue
-            lines.append(f"### {_SECTION_TITLES.get(ct, ct.value)}\n")
-            for commit in commits:
-                sha_link = self._sha_link(commit.sha)
-                lines.append(f"- {commit.message} {sha_link}".rstrip())
-            lines.append("")
+            if commits:
+                parts.append(f"\n### {_SECTION_TITLES[ct]}\n")
+                for commit in commits:
+                    parts.append(self._fmt(commit))
 
-        return "\n".join(lines)
+        return "\n".join(parts)
 
-    def _sha_link(self, sha: str) -> str:
-        if self._github_repo:
-            url = f"https://github.com/{self._github_repo}/commit/{sha}"
-            return f"([`{sha[:7]}`]({url}))"
-        return f"(`{sha[:7]}`)"
+    def _fmt(self, commit: Commit) -> str:
+        """Format a single commit as a list item.
+
+        Args:
+            commit: Commit object.
+
+        Returns:
+            Markdown list item string.
+        """
+        subject = commit.subject or commit.message.split("\n")[0]
+        subject = re.sub(r"^\w+(\(.+\))?!?: ", "", subject)
+        parts = [f"- {subject}"]
+
+        github_repo = self._config.github.repo
+        if commit.pr_number and github_repo:
+            url = f"https://github.com/{github_repo}/pull/{commit.pr_number}"
+            parts.append(f"([#{commit.pr_number}]({url}))")
+        elif commit.pr_number:
+            parts.append(f"(#{commit.pr_number})")
+
+        if github_repo:
+            sha_url = f"https://github.com/{github_repo}/commit/{commit.sha}"
+            parts.append(f"[`{commit.short_sha}`]({sha_url})")
+        else:
+            parts.append(f"`{commit.short_sha}`")
+
+        return " ".join(parts)
