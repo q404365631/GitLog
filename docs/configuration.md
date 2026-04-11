@@ -1,81 +1,84 @@
 # Configuration Reference
 
-`gitlog` is configured via a `.gitlog.toml` file in the root of your repository.
-Run `gitlog init` to generate one interactively.
+`gitlog` can be configured via a `.gitlog.toml` file in your repository root,
+or via environment variables (prefixed `GITLOG_`).
 
-## Full Configuration Reference
+Run `gitlog init` for an interactive setup wizard.
+
+---
+
+## Full `.gitlog.toml` Reference
 
 ```toml
 [gitlog]
-# LLM provider: openai | anthropic | ollama | gemini
-llm_provider = "openai"
+# LLM provider identifier
+llm_provider = "openai"          # openai | anthropic | ollama | gemini
 
 # Model name (provider-specific)
 model = "gpt-4o-mini"
 
-# Output language: en | zh-TW | zh-CN | ja
-language = "en"
+# Output language
+language = "en"                  # en | zh-TW | zh-CN | ja
 
-# Output format: markdown | json | html | twitter
-format = "markdown"
+# Default output format
+format = "markdown"              # markdown | json | html | twitter
 
-# Output file path
+# Output file path (relative to repo root)
 output_file = "CHANGELOG.md"
 
-# Short description of the project (used as LLM context)
-project_description = "A developer tool for generating changelogs."
+# Short project description — injected into LLM context for better results
+project_description = "A developer tool for..."
 
-# Commit messages matching these regex patterns are excluded
+# Regex patterns to exclude commits (applied to subject line)
 exclude_patterns = [
     "^chore\\(deps\\)",
     "^Merge branch",
     "^Merge pull request",
 ]
 
-# Group commits by scope (e.g. feat(ui): ... -> ui group)
+# Group entries by commit scope (e.g. feat(auth): → grouped under 'auth')
 group_by_scope = true
 
-# Max commits shown per category per version
+# Maximum commits rendered per category per version
 max_commits_per_group = 20
 
+# Project name shown in changelog header (defaults to repo directory name)
+project_name = ""
+
+
 [gitlog.prompts]
-# Override default classification system prompt (leave empty to use built-in)
+# Override the default classification system prompt
 classify_system = ""
-# Override default summarization system prompt
+
+# Override the default summarize/polish system prompt
 summarize_system = ""
 
+
 [gitlog.github]
-# Your GitHub repo slug -- enables clickable PR/commit/issue links
+# GitHub repository in owner/repo format
+# Enables auto-generation of commit hash links, PR links, and issue links
 repo = "owner/repo"
 ```
 
+---
+
 ## Environment Variables
 
-| Variable | Description |
+All settings can be overridden via environment variables:
+
+| Variable | Equivalent setting |
 |---|---|
+| `GITLOG_LLM_PROVIDER` | `llm_provider` |
+| `GITLOG_MODEL` | `model` |
+| `GITLOG_LANGUAGE` | `language` |
+| `GITLOG_FORMAT` | `format` |
+| `GITLOG_OUTPUT_FILE` | `output_file` |
+| `GITLOG_PROJECT_DESCRIPTION` | `project_description` |
 | `OPENAI_API_KEY` | OpenAI API key |
 | `ANTHROPIC_API_KEY` | Anthropic API key |
-| `GITLOG_MODEL` | Override model via env |
-| `GITLOG_LANGUAGE` | Override language via env |
-| `GITLOG_FORMAT` | Override format via env |
 
-## Supported LLM Providers
+---
 
-| Provider | Example model string |
-|---|---|
-| OpenAI | `openai/gpt-4o-mini` |
-| Anthropic | `anthropic/claude-3-5-haiku-20241022` |
-| Google Gemini | `gemini/gemini-1.5-flash` |
-| Local Ollama | `ollama/llama3` |
-| Any OpenAI-compatible | `openai/custom-model` |
+## Precedence
 
-## GitHub Actions Integration
-
-```yaml
-- name: Generate Changelog
-  env:
-    OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-  run: |
-    pip install gitlog
-    gitlog generate --since v1.0.0 --format markdown --output CHANGELOG.md
-```
+CLI flags > environment variables > `.gitlog.toml` > built-in defaults.
