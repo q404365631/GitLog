@@ -1,0 +1,23 @@
+## What's New in {{ entry.version }}
+
+{% if entry.groups.get('breaking') %}
+### ⚠️ Breaking Changes
+{% for commit in entry.groups['breaking'] %}
+- **{{ commit.message }}**
+{% endfor %}
+
+{% endif %}
+{% if entry.groups.get('feat') %}
+### ✨ New Features
+{% for commit in entry.groups['feat'] %}
+- {{ commit.message }}
+{% endfor %}
+
+{% endif %}
+{% if entry.groups.get('fix') %}
+### 🐛 Bug Fixes
+{% for commit in entry.groups['fix'] %}
+- {{ commit.message }}
+{% endfor %}
+
+{% endif %}

@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Changelog</title>
+<style>
+  :root {
+    --bg: #f7f6f2; --surface: #fff; --text: #1a1a1a; --text-muted: #6b7280;
+    --border: #e5e7eb; --primary: #3b82f6; --radius: 0.75rem;
+    --shadow: 0 1px 3px rgba(0,0,0,.08);
+  }
+  [data-theme=dark] {
+    --bg: #111827; --surface: #1f2937; --text: #f9fafb; --text-muted: #9ca3af;
+    --border: #374151; --primary: #60a5fa;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+         background: var(--bg); color: var(--text); line-height: 1.6; }
+  .container { max-width: 900px; margin: 0 auto; padding: 2rem 1rem; }
+  header { display: flex; align-items: center; justify-content: space-between;
+           margin-bottom: 2rem; }
+  h1 { font-size: 2rem; font-weight: 700; }
+  .toggle { background: var(--surface); border: 1px solid var(--border);
+            border-radius: var(--radius); padding: .4rem .8rem; cursor: pointer;
+            color: var(--text); font-size: .85rem; }
+  .timeline { position: relative; }
+  .timeline::before { content: ''; position: absolute; left: 1.25rem; top: 0;
+                       bottom: 0; width: 2px; background: var(--border); }
+  .version-block { position: relative; padding-left: 3.5rem; margin-bottom: 2.5rem; }
+  .version-dot { position: absolute; left: .65rem; top: .35rem; width: 1.25rem;
+                 height: 1.25rem; border-radius: 50%; background: var(--primary);
+                 border: 3px solid var(--bg); }
+  .version-card { background: var(--surface); border: 1px solid var(--border);
+                  border-radius: var(--radius); padding: 1.5rem;
+                  box-shadow: var(--shadow); }
+  .version-header { display: flex; align-items: baseline; gap: 1rem;
+                    margin-bottom: 1rem; }
+  .version-tag { font-size: 1.25rem; font-weight: 700; }
+  .version-date { color: var(--text-muted); font-size: .875rem; }
+  .category { margin-bottom: 1rem; }
+  .badge { display: inline-block; padding: .15rem .55rem; border-radius: 999px;
+           font-size: .75rem; font-weight: 600; color: #fff; margin-bottom: .5rem; }
+  .commit-list { list-style: none; }
+  .commit-list li { padding: .25rem 0; font-size: .9rem; color: var(--text-muted);
+                    border-bottom: 1px solid var(--border); }
+  .commit-list li:last-child { border-bottom: none; }
+  .sha { font-family: monospace; font-size: .8rem; margin-left: .5rem;
+         color: var(--primary); }
+  @media (max-width: 600px) { .timeline::before { left: .5rem; }
+    .version-block { padding-left: 2rem; } }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1>📋 Changelog</h1>
+    <button class="toggle" onclick="toggleTheme()">Toggle Dark Mode</button>
+  </header>
+  <div class="timeline">
+    {% for entry in changelog.entries %}
+    <div class="version-block">
+      <div class="version-dot"></div>
+      <div class="version-card">
+        <div class="version-header">
+          <span class="version-tag">{{ entry.version }}</span>
+          {% if entry.date %}<span class="version-date">{{ entry.date }}</span>{% endif %}
+        </div>
+        {% for ct, commits in entry.groups.items() %}
+        {% if commits %}
+        <div class="category">
+          <span class="badge" style="background:{{ category_colors.get(ct, '#6b7280') }}">
+            {{ ct.value }}</span>
+          <ul class="commit-list">
+            {% for commit in commits %}
+            <li>
+              {{ commit.message | e }}
+              {% if github_repo %}
+              <a class="sha" href="https://github.com/{{ github_repo }}/commit/{{ commit.sha }}"
+                 target="_blank" rel="noopener">`{{ commit.sha[:7] }}`</a>
+              {% else %}
+              <code class="sha">{{ commit.sha[:7] }}</code>
+              {% endif %}
+            </li>
+            {% endfor %}
+          </ul>
+        </div>
+        {% endif %}
+        {% endfor %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+<script>
+function toggleTheme(){
+  const h=document.documentElement;
+  h.setAttribute('data-theme',h.getAttribute('data-theme')==='dark'?'light':'dark');
+}
+</script>
+</body>
+</html>

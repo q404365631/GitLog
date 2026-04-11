@@ -1,0 +1,21 @@
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+{% for entry in changelog.entries %}
+## [{{ entry.version }}]{% if entry.date %} - {{ entry.date }}{% endif %}
+
+{% for ct, commits in entry.groups.items() %}
+{% if commits %}
+### {{ ct.value | title }}
+
+{% for commit in commits %}
+- {{ commit.message }}{% if commit.issue_refs %} (closes {% for i in commit.issue_refs %}#{{ i }}{% if not loop.last %}, {% endif %}{% endfor %}){% endif %}
+{% endfor %}
+
+{% endif %}
+{% endfor %}
+{% endfor %}
