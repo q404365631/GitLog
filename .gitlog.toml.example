@@ -1,0 +1,20 @@
+# Example .gitlog.toml configuration
+# Copy to .gitlog.toml and customise, or run: gitlog init
+
+[gitlog]
+llm_provider = "openai"
+model = "gpt-4o-mini"
+language = "en"
+format = "markdown"
+output_file = "CHANGELOG.md"
+project_description = "A developer tool for..."
+exclude_patterns = ["^chore\\(deps\\)", "^Merge branch"]
+group_by_scope = true
+max_commits_per_group = 20
+
+[gitlog.prompts]
+classify_system = ""
+summarize_system = ""
+
+[gitlog.github]
+repo = "owner/repo"
