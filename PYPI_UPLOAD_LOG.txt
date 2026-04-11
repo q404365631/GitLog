@@ -1,0 +1,11 @@
+Uploaded logforge-gitlog 0.1.0 artifacts to PyPI
+
+Artifacts uploaded:
+- dist/logforge_gitlog-0.1.0-py3-none-any.whl
+- dist/logforge_gitlog-0.1.0.tar.gz
+
+PyPI URL:
+https://pypi.org/project/logforge-gitlog/0.1.0/
+
+Command used:
+$env:TWINE_USERNAME="__token__"; $env:TWINE_PASSWORD="<REDACTED_TOKEN>"; .venv\Scripts\python -m twine upload --verbose dist/*logforge_gitlog*
