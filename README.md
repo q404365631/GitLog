@@ -10,7 +10,7 @@
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-One command. From git history to a human-readable, structured CHANGELOG.  
+One command. From git history to a human-readable, structured CHANGELOG.
 Supports **multiple languages**, **multiple output formats**, and **any LLM**.
 
 </div>
@@ -38,10 +38,10 @@ pip install git+https://github.com/JToSound/LogForge.git
 
 ```bash
 # Option A: environment variable (recommended for CI)
-export OPENAI_API_KEY="sk-..."
+export OPENAI_API_KEY="***"
 
 # Option B: .env file in your repo root
-echo "OPENAI_API_KEY=sk-..." > .env
+echo "OPENAI_API_KEY=***" > .env
 
 # Option C: use a local model (no key needed)
 gitlog generate --model ollama/llama3
@@ -81,21 +81,132 @@ Below is a very short demo that shows `gitlog generate` producing a changelog in
 
 ---
 
-## Installation
+## Installation Guide
+
+### Prerequisites
+
+Before installing gitlog, make sure you have:
+
+1. **Python 3.11 or higher**
+   - Check with: `python --version` or `python3 --version`
+   - Download from: https://www.python.org/downloads/
+
+2. **Git installed and configured**
+   - Check with: `git --version`
+   - Make sure git is in your PATH
+
+3. **(Optional) API keys for LLM providers**
+   - OpenAI: Get from https://platform.openai.com/api-keys
+   - Anthropic: Get from https://console.anthropic.com/
+   - Ollama: Install locally for free inference
+
+### Installation Methods
+
+#### Method 1: Using uv (Recommended)
 
 ```bash
-# Recommended: with uv
-uv tool install gitlog
+# Install uv if you don't have it
+curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# Or pip
-pip install gitlog
+# Then install gitlog
+uv tool install gitlog
 ```
 
-**Requirements:** Python 3.11+, Git
+#### Method 2: Using pip
+
+```bash
+# Standard pip installation
+pip install gitlog
+
+# Or with user installation (recommended for development)
+pip install --user gitlog
+```
+
+#### Method 3: Development Installation
+
+```bash
+# Clone the repository
+git clone https://github.com/JToSound/LogForge.git
+cd LogForge
+
+# Install in development mode
+pip install -e .
+
+# Or with all dependencies
+pip install -e ".[dev]"
+```
 
 ---
 
-## Usage
+## Configuration Guide
+
+### Basic Configuration
+
+Create a `.gitlog.toml` file in your repository root:
+
+```toml
+[gitlog]
+llm_provider = "openai"
+model = "gpt-4o-mini"
+language = "en"
+format = "markdown"
+output_file = "CHANGELOG.md"
+project_description = "A developer tool for generating changelogs from git history"
+exclude_patterns = ["^chore\\(deps\\)", "^Merge branch"]
+group_by_scope = true
+max_commits_per_group = 20
+
+[gitlog.github]
+repo = "your-username/your-repo"
+```
+
+### Advanced Configuration Examples
+
+#### Example 1: Local Ollama Setup
+
+```toml
+[gitlog]
+llm_provider = "ollama"
+model = "ollama/llama3"
+language = "zh-CN"
+format = "markdown"
+output_file = "CHANGELOG_zh.md"
+```
+
+#### Example 2: Multiple Output Formats
+
+```toml
+[gitlog]
+llm_provider = "openai"
+model = "gpt-4o-mini"
+language = "en"
+format = "json"
+output_file = "CHANGELOG.json"
+
+[gitlog]
+format = "html"
+output_file = "CHANGELOG.html"
+```
+
+### Configuration Reference
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `llm_provider` | `openai` | LLM provider: `openai`, `anthropic`, `ollama` |
+| `model` | `gpt-4o-mini` | Model identifier |
+| `language` | `en` | Output language: `en`, `zh-TW`, `zh-CN`, `ja` |
+| `format` | `markdown` | Output format: `markdown`, `json`, `html`, `twitter` |
+| `output_file` | `CHANGELOG.md` | Output file path |
+| `project_description` | `""` | Project context injected into LLM prompts |
+| `exclude_patterns` | see default | Regex list of commit messages to skip |
+| `group_by_scope` | `true` | Group commits by conventional commit scope |
+| `max_commits_per_group` | `20` | Max commits shown per category per version |
+
+---
+
+## Usage Examples
+
+### Basic Commands
 
 ```bash
 # Generate full CHANGELOG
@@ -129,46 +240,34 @@ gitlog stats
 gitlog init
 ```
 
----
+### Common Workflows
 
-## Configuration
+#### CI/CD Integration
 
-Create a `.gitlog.toml` in your repo root (or run `gitlog init`):
-
-```toml
-[gitlog]
-llm_provider = "openai"
-model = "gpt-4o-mini"
-language = "en"
-format = "markdown"
-output_file = "CHANGELOG.md"
-project_description = "A developer tool for..."
-exclude_patterns = ["^chore\\(deps\\)", "^Merge branch"]
-group_by_scope = true
-max_commits_per_group = 20
-
-[gitlog.github]
-repo = "owner/repo"
+```bash
+# In GitHub Actions
+name: Generate Changelog
+run: |
+  pip install gitlog
+  export OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
+  gitlog generate --since ${{ github.ref_name }}
 ```
 
-### Full Configuration Reference
+#### Custom Commit Filtering
 
-| Parameter | Default | Description |
-|---|---|---|
-| `llm_provider` | `openai` | LLM provider: `openai`, `anthropic`, `ollama` |
-| `model` | `gpt-4o-mini` | Model identifier |
-| `language` | `en` | Output language: `en`, `zh-TW`, `zh-CN`, `ja` |
-| `format` | `markdown` | Output format: `markdown`, `json`, `html`, `twitter` |
-| `output_file` | `CHANGELOG.md` | Output file path |
-| `project_description` | `""` | Project context injected into LLM prompts |
-| `exclude_patterns` | see default | Regex list of commit messages to skip |
-| `group_by_scope` | `true` | Group commits by conventional commit scope |
-| `max_commits_per_group` | `20` | Max commits shown per category per version |
-| `github.repo` | `""` | `owner/repo` for generating clickable links |
+```bash
+# Exclude specific types of commits
+gitlog generate --exclude-pattern "^test\\(|^docs:"
+
+# Include only feature commits
+gitlog generate --include-pattern "^feat:"
+```
 
 ---
 
-## GitHub Actions Integration
+## CI/CD Integration
+
+### GitHub Actions
 
 Add to your release workflow:
 
@@ -184,12 +283,70 @@ Or use the included `release.yml` which automatically:
 2. Generates the changelog using gitlog itself
 3. Creates a GitHub Release with the generated notes
 
+### GitLab CI
+
+```yaml
+generate-changelog:
+  image: python:3.11
+  script:
+    - pip install gitlog
+    - export OPENAI_API_KEY=$OPENAI_API_KEY
+    - gitlog generate --since $CI_COMMIT_TAG
+  artifacts:
+    paths:
+      - CHANGELOG.md
+```
+
+---
+
+## Troubleshooting
+
+### Common Issues
+
+#### "Command not found" after installation
+```bash
+# Check if gitlog is in your PATH
+which gitlog
+
+# If using virtual environment, activate it first
+source venv/bin/activate
+pip install gitlog
+```
+
+#### API Key Authentication Failed
+```bash
+# Verify your API key is set correctly
+echo $OPENAI_API_KEY
+
+# Test with a simple command
+OPENAI_API_KEY="your-key-here" gitlog generate --dry-run
+```
+
+#### Git Not Found
+```bash
+# Install Git if missing
+# On Ubuntu/Debian: sudo apt-get install git
+# On macOS: brew install git
+# On Windows: Download from git-scm.com
+```
+
+#### Permission Denied Errors
+```bash
+# Use --user flag for local installation
+pip install --user gitlog
+
+# Or use virtual environment
+python -m venv venv
+source venv/bin/activate
+pip install gitlog
+```
+
 ---
 
 ## Supported LLM Providers
 
 | Provider | Model Example | Env Var |
-|---|---|---|
+|----------|---------------|---------|
 | OpenAI | `gpt-4o-mini` | `OPENAI_API_KEY` |
 | Anthropic | `claude-3-5-haiku-20241022` | `ANTHROPIC_API_KEY` |
 | Ollama (local) | `ollama/llama3` | *(none required)* |
